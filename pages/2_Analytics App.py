@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import pickle
+import requests
+import io
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -9,9 +11,15 @@ import seaborn as sns
 st.set_page_config(page_title="Plotting Demo")
 st.title("Analytics App")
 
-# Load data
-new_df = pd.read_csv('datasets/data_viz1.csv')
-feature_text = pickle.load(open('datasets/feature_text.pkl', 'rb'))
+# Load data_viz1.csv from Hugging Face
+csv_url = "https://huggingface.co/arinseth92/real-estate-models/resolve/main/data_viz1.csv?download=true"
+csv_response = requests.get(csv_url)
+new_df = pd.read_csv(io.StringIO(csv_response.text))
+
+# Load feature_text.pkl from Hugging Face
+pkl_url = "https://huggingface.co/arinseth92/real-estate-models/resolve/main/feature_text.pkl?download=true"
+pkl_response = requests.get(pkl_url)
+feature_text = pickle.loads(pkl_response.content)
 
 # Geomap
 group_df = new_df.groupby('sector')[['price', 'price_per_sqft', 'built_up_area', 'latitude', 'longitude']].mean().reset_index()
@@ -30,12 +38,11 @@ wordcloud_property_type = st.selectbox('Select Property Type for WordCloud', ['o
 if wordcloud_property_type == 'overall':
     text_data = feature_text
 else:
-    # You must ensure your dataframe has a 'features' or equivalent column for each row
     filtered_df = new_df[new_df['property_type'] == wordcloud_property_type]
     if 'features' in filtered_df.columns:
         text_data = ' '.join(filtered_df['features'].dropna().astype(str).tolist())
     else:
-        text_data = feature_text  # fallback if 'features' column not found
+        text_data = feature_text  # fallback
 
 # Generate wordcloud
 wordcloud = WordCloud(width=800, height=800, background_color='white', stopwords=set(['s']),
@@ -57,36 +64,29 @@ else:
 
 st.plotly_chart(fig1, use_container_width=True)
 
+# BHK Pie Chart
 st.header('BHK Pie Chart')
-
 sector_options = new_df['sector'].unique().tolist()
-sector_options.insert(0,'overall')
-
+sector_options.insert(0, 'overall')
 selected_sector = st.selectbox('Select Sector', sector_options)
 
 if selected_sector == 'overall':
-
     fig2 = px.pie(new_df, names='bedRoom')
-
-    st.plotly_chart(fig2, use_container_width=True)
 else:
-
     fig2 = px.pie(new_df[new_df['sector'] == selected_sector], names='bedRoom')
 
-    st.plotly_chart(fig2, use_container_width=True)
+st.plotly_chart(fig2, use_container_width=True)
 
+# Side-by-Side Boxplot
 st.header('Side by Side BHK price comparison')
-
 fig3 = px.box(new_df[new_df['bedRoom'] <= 4], x='bedRoom', y='price', title='BHK Price Range')
-
 st.plotly_chart(fig3, use_container_width=True)
 
-
+# Distplot for property type
 st.header('Side by Side Distplot for property type')
-
-fig3 = plt.figure(figsize=(10, 4))
-sns.distplot(new_df[new_df['property_type'] == 'house']['price'],label='house')
-sns.distplot(new_df[new_df['property_type'] == 'flat']['price'], label='flat')
+fig4 = plt.figure(figsize=(10, 4))
+sns.histplot(new_df[new_df['property_type'] == 'house']['price'], kde=True, label='house', stat="density")
+sns.histplot(new_df[new_df['property_type'] == 'flat']['price'], kde=True, label='flat', stat="density")
 plt.legend()
-st.pyplot(fig3)
+st.pyplot(fig4)
 
